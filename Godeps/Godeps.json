@@ -1,0 +1,15 @@
+{
+	"ImportPath": "github.com/ae6rt/dyndns",
+	"GoVersion": "go1.5.3",
+	"Deps": [
+		{
+			"ImportPath": "github.com/boltdb/bolt",
+			"Comment": "v1.1.0-65-gee4a088",
+			"Rev": "ee4a0888a9abe7eefe5a0992ca4cb06864839873"
+		},
+		{
+			"ImportPath": "github.com/miekg/dns",
+			"Rev": "4687536c727745d43759e8baae72cccf716f813a"
+		}
+	]
+}

@@ -23,13 +23,19 @@ var (
 	db_path  *string
 	port     *int
 	bdb      *bolt.DB
-	logfile  *string
 	pid_file *string
+	debug    *bool
+
+	Log = log.New(os.Stdout, "", log.Ldate|log.Ltime|log.Lshortfile)
 )
 
 const rr_bucket = "rr"
 
 func getKey(domain string, rtype uint16) (r string, e error) {
+	if *debug {
+		Log.Printf("getKey:  domain: %s, resource type: %d\n", domain, rtype)
+	}
+
 	if n, ok := dns.IsDomainName(domain); ok {
 		labels := dns.SplitDomainName(domain)
 
@@ -46,18 +52,22 @@ func getKey(domain string, rtype uint16) (r string, e error) {
 		r = strings.Join([]string{reverse_domain, strconv.Itoa(int(rtype))}, "_")
 	} else {
 		e = errors.New("Invailid domain: " + domain)
-		log.Println(e.Error())
+		Log.Println(e.Error())
 	}
 
 	return r, e
 }
 
 func createBucket(bucket string) (err error) {
+	if *debug {
+		Log.Printf("createBucket: %s\n", bucket)
+	}
+
 	err = bdb.Update(func(tx *bolt.Tx) error {
 		_, err := tx.CreateBucketIfNotExists([]byte(bucket))
 		if err != nil {
 			e := errors.New("Create bucket: " + bucket)
-			log.Println(e.Error())
+			Log.Println(e.Error())
 
 			return e
 		}
@@ -69,6 +79,10 @@ func createBucket(bucket string) (err error) {
 }
 
 func deleteRecord(domain string, rtype uint16) (err error) {
+	if *debug {
+		Log.Printf("deleteRecord: %s, resource type: %d\n", domain, rtype)
+	}
+
 	key, _ := getKey(domain, rtype)
 	err = bdb.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(rr_bucket))
@@ -76,7 +90,7 @@ func deleteRecord(domain string, rtype uint16) (err error) {
 
 		if err != nil {
 			e := errors.New("Delete record failed for domain: " + domain)
-			log.Println(e.Error())
+			Log.Println(e.Error())
 
 			return e
 		}
@@ -88,6 +102,10 @@ func deleteRecord(domain string, rtype uint16) (err error) {
 }
 
 func storeRecord(rr dns.RR) (err error) {
+	if *debug {
+		Log.Printf("Store record: resource record: %+v\n", rr)
+	}
+
 	key, _ := getKey(rr.Header().Name, rr.Header().Rrtype)
 	err = bdb.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(rr_bucket))
@@ -95,7 +113,7 @@ func storeRecord(rr dns.RR) (err error) {
 
 		if err != nil {
 			e := errors.New("Store record failed: " + rr.String())
-			log.Println(e.Error())
+			Log.Println(e.Error())
 
 			return e
 		}
@@ -107,6 +125,10 @@ func storeRecord(rr dns.RR) (err error) {
 }
 
 func getRecord(domain string, rtype uint16) (rr dns.RR, err error) {
+	if *debug {
+		Log.Printf("getRecord: domain: %s, resource type: %d\n", domain, rtype)
+	}
+
 	key, _ := getKey(domain, rtype)
 	var v []byte
 
@@ -116,7 +138,7 @@ func getRecord(domain string, rtype uint16) (rr dns.RR, err error) {
 
 		if string(v) == "" {
 			e := errors.New("Record not found, key: " + key)
-			log.Println(e.Error())
+			Log.Println(e.Error())
 
 			return e
 		}
@@ -132,6 +154,10 @@ func getRecord(domain string, rtype uint16) (rr dns.RR, err error) {
 }
 
 func updateRecord(r dns.RR, q *dns.Question) {
+	if *debug {
+		Log.Printf("updateRecord: resource record: %+v, question: %+v\n", r, q)
+	}
+
 	var (
 		rr    dns.RR
 		name  string
@@ -186,6 +212,10 @@ func updateRecord(r dns.RR, q *dns.Question) {
 }
 
 func parseQuery(m *dns.Msg) {
+	if *debug {
+		Log.Printf("parseQuery: message:  %+v\n", m)
+	}
+
 	var rr dns.RR
 
 	for _, q := range m.Question {
@@ -199,6 +229,10 @@ func parseQuery(m *dns.Msg) {
 }
 
 func handleDnsRequest(w dns.ResponseWriter, r *dns.Msg) {
+	if *debug {
+		Log.Printf("handleRequest: message: %+v\n", r)
+	}
+
 	m := new(dns.Msg)
 	m.SetReply(r)
 	m.Compress = false
@@ -220,7 +254,7 @@ func handleDnsRequest(w dns.ResponseWriter, r *dns.Msg) {
 			m.SetTsig(r.Extra[len(r.Extra)-1].(*dns.TSIG).Hdr.Name,
 				dns.HmacMD5, 300, time.Now().Unix())
 		} else {
-			log.Println("Status", w.TsigStatus().Error())
+			Log.Println("Status", w.TsigStatus().Error())
 		}
 	}
 
@@ -234,33 +268,32 @@ func serve(name, secret string, port int) {
 		server.TsigSecret = map[string]string{name: secret}
 	}
 
+	Log.Println("Starting server")
 	err := server.ListenAndServe()
 	defer server.Shutdown()
 
 	if err != nil {
-		log.Fatalf("Failed to setup the udp server: %s\n", err.Error())
+		Log.Fatalf("Failed to setup the udp server: %s\n", err.Error())
 	}
 }
 
 func main() {
 	var (
-		name   string   // tsig keyname
-		secret string   // tsig base64
-		fh     *os.File // logfile handle
+		name   string // tsig keyname
+		secret string // tsig base64
 	)
 
 	// Parse flags
-	logfile = flag.String("logfile", "", "path to log file ")
 	port = flag.Int("port", 53, "server port ")
 	tsig = flag.String("tsig", "", "use MD5 hmac tsig: keyname:base64")
 	db_path = flag.String("db_path", "./dyndns.db", "location where db will be stored")
 	pid_file = flag.String("pid", "./go-dyndns.pid", "pid file location")
+	debug = flag.Bool("debug", false, "log debug to console")
 
 	flag.Parse()
 
 	// Open db
-	db, err := bolt.Open(*db_path, 0600,
-		&bolt.Options{Timeout: 10 * time.Second})
+	db, err := bolt.Open(*db_path, 0600, &bolt.Options{Timeout: 10 * time.Second})
 
 	if err != nil {
 		log.Fatal(err)
@@ -280,27 +313,10 @@ func main() {
 		name, secret = dns.Fqdn(a[0]), a[1]
 	}
 
-	// Logger setup
-	if *logfile != "" {
-		if _, err := os.Stat(*logfile); os.IsNotExist(err) {
-			if file, err := os.Create(*logfile); err != nil {
-				if err != nil {
-					log.Panic("Couldn't create log file: ", err)
-				}
-
-				fh = file
-			}
-		} else {
-			fh, _ = os.OpenFile(*logfile, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
-		}
-		defer fh.Close()
-		log.SetOutput(fh)
-	}
-
 	// Pidfile
 	file, err := os.OpenFile(*pid_file, os.O_RDWR|os.O_CREATE, 0666)
 	if err != nil {
-		log.Panic("Couldn't create pid file: ", err)
+		Log.Panic("Couldn't create pid file: ", err)
 	} else {
 		file.Write([]byte(strconv.Itoa(syscall.Getpid())))
 		defer file.Close()
@@ -315,7 +331,7 @@ endless:
 	for {
 		select {
 		case s := <-sig:
-			log.Printf("Signal (%d) received, stopping", s)
+			Log.Printf("Signal (%v) received, stopping", s)
 			break endless
 		}
 	}

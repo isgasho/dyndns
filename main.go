@@ -19,17 +19,17 @@ import (
 )
 
 var (
-	tsig     *string
-	db_path  *string
-	port     *int
-	bdb      *bolt.DB
-	pid_file *string
-	debug    *bool
+	tsig    *string
+	dbPath  *string
+	port    *int
+	bdb     *bolt.DB
+	pidFile *string
+	debug   *bool
 
 	Log = log.New(os.Stdout, "", log.Ldate|log.Ltime|log.Lshortfile)
 )
 
-const rr_bucket = "rr"
+const rrBucket = "rr"
 
 func getKey(domain string, rtype uint16) (r string, e error) {
 	if *debug {
@@ -48,8 +48,8 @@ func getKey(domain string, rtype uint16) (r string, e error) {
 			labels[n-1] = tmp
 		}
 
-		reverse_domain := strings.Join(labels, ".")
-		r = strings.Join([]string{reverse_domain, strconv.Itoa(int(rtype))}, "_")
+		reverseDomain := strings.Join(labels, ".")
+		r = strings.Join([]string{reverseDomain, strconv.Itoa(int(rtype))}, "_")
 	} else {
 		e = errors.New("Invailid domain: " + domain)
 		Log.Println(e.Error())
@@ -85,7 +85,7 @@ func deleteRecord(domain string, rtype uint16) (err error) {
 
 	key, _ := getKey(domain, rtype)
 	err = bdb.Update(func(tx *bolt.Tx) error {
-		b := tx.Bucket([]byte(rr_bucket))
+		b := tx.Bucket([]byte(rrBucket))
 		err := b.Delete([]byte(key))
 
 		if err != nil {
@@ -108,7 +108,7 @@ func storeRecord(rr dns.RR) (err error) {
 
 	key, _ := getKey(rr.Header().Name, rr.Header().Rrtype)
 	err = bdb.Update(func(tx *bolt.Tx) error {
-		b := tx.Bucket([]byte(rr_bucket))
+		b := tx.Bucket([]byte(rrBucket))
 		err := b.Put([]byte(key), []byte(rr.String()))
 
 		if err != nil {
@@ -133,7 +133,7 @@ func getRecord(domain string, rtype uint16) (rr dns.RR, err error) {
 	var v []byte
 
 	err = bdb.View(func(tx *bolt.Tx) error {
-		b := tx.Bucket([]byte(rr_bucket))
+		b := tx.Bucket([]byte(rrBucket))
 		v = b.Get([]byte(key))
 
 		if string(v) == "" {
@@ -228,7 +228,7 @@ func parseQuery(m *dns.Msg) {
 	}
 }
 
-func handleDnsRequest(w dns.ResponseWriter, r *dns.Msg) {
+func handleDNSRequest(w dns.ResponseWriter, r *dns.Msg) {
 	if *debug {
 		Log.Printf("handleRequest: message: %+v\n", r)
 	}
@@ -286,14 +286,14 @@ func main() {
 	// Parse flags
 	port = flag.Int("port", 53, "server port ")
 	tsig = flag.String("tsig", "", "use MD5 hmac tsig: keyname:base64")
-	db_path = flag.String("db_path", "./dyndns.db", "location where db will be stored")
-	pid_file = flag.String("pid", "./go-dyndns.pid", "pid file location")
+	dbPath = flag.String("db_path", "./dyndns.db", "location where db will be stored")
+	pidFile = flag.String("pid", "./go-dyndns.pid", "pid file location")
 	debug = flag.Bool("debug", false, "log debug to console")
 
 	flag.Parse()
 
 	// Open db
-	db, err := bolt.Open(*db_path, 0600, &bolt.Options{Timeout: 10 * time.Second})
+	db, err := bolt.Open(*dbPath, 0600, &bolt.Options{Timeout: 10 * time.Second})
 
 	if err != nil {
 		log.Fatal(err)
@@ -302,10 +302,10 @@ func main() {
 	bdb = db
 
 	// Create dns bucket if doesn't exist
-	createBucket(rr_bucket)
+	createBucket(rrBucket)
 
 	// Attach request handler func
-	dns.HandleFunc(".", handleDnsRequest)
+	dns.HandleFunc(".", handleDNSRequest)
 
 	// Tsig extract
 	if *tsig != "" {
@@ -314,7 +314,7 @@ func main() {
 	}
 
 	// Pidfile
-	file, err := os.OpenFile(*pid_file, os.O_RDWR|os.O_CREATE, 0666)
+	file, err := os.OpenFile(*pidFile, os.O_RDWR|os.O_CREATE, 0666)
 	if err != nil {
 		Log.Panic("Couldn't create pid file: ", err)
 	} else {

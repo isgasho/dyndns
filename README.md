@@ -1,3 +1,9 @@
+## Simple dynamic DNS server
+
+From 
+
+http://mkaczanowski.com/golang-build-dynamic-dns-service-go/#server_code
+
 ## Start the server
 
 ```

@@ -228,7 +228,7 @@ func handleDnsRequest(w dns.ResponseWriter, r *dns.Msg) {
 }
 
 func serve(name, secret string, port int) {
-	server := &dns.Server{Addr: "0.0.0.update delete router.mkaczanowski.com. A0:" + strconv.Itoa(port), Net: "udp"}
+	server := &dns.Server{Addr: "0.0.0.0:" + strconv.Itoa(port), Net: "udp"}
 
 	if name != "" {
 		server.TsigSecret = map[string]string{name: secret}

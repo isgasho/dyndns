@@ -219,8 +219,8 @@ func parseQuery(m *dns.Msg) {
 	var rr dns.RR
 
 	for _, q := range m.Question {
-		if read_rr, e := getRecord(q.Name, q.Qtype); e == nil {
-			rr = read_rr.(dns.RR)
+		if readRR, e := getRecord(q.Name, q.Qtype); e == nil {
+			rr = readRR.(dns.RR)
 			if rr.Header().Name == q.Name {
 				m.Answer = append(m.Answer, rr)
 			}
